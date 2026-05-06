@@ -356,7 +356,8 @@
   <!-- MANUAL PANEL -->
   <div class="panel" id="panel-manual">
     <div class="card">
-      <div class="card-label">Current standing</div>
+      <div class="card-label">Current standing (optional)</div>
+      <p style="font-size:13px;color:var(--text2);margin-bottom:12px;">Have a GPA already? Enter it here. First semester? Leave both blank — we'll just calculate this term's GPA.</p>
       <div class="field-row">
         <div class="field">
           <label>Current cumulative GPA</label>
@@ -533,10 +534,34 @@ async function analyzeUpload() {
   }
 }
 
+let lastExtracted = null;
+
+function gpaFromCourses(courses) {
+  if (!courses || !courses.length) return { gpa: null, credits: 0, gradedCount: 0 };
+  let points = 0, credits = 0, count = 0;
+  courses.forEach(c => {
+    const g = GRADE_MAP[c.grade];
+    const cr = parseFloat(c.credits);
+    if (g !== undefined && !isNaN(cr) && cr > 0) {
+      points += g * cr;
+      credits += cr;
+      count += 1;
+    }
+  });
+  if (credits === 0) return { gpa: null, credits: 0, gradedCount: 0 };
+  return { gpa: points / credits, credits, gradedCount: count };
+}
+
 function renderUploadResults(d) {
+  lastExtracted = d;
   const el = document.getElementById('upload-result');
-  const gpa = d.cumulative_gpa;
-  const credits = d.total_credits;
+
+  const computed = gpaFromCourses(d.courses);
+  const gpa = (d.cumulative_gpa !== null && d.cumulative_gpa !== undefined) ? d.cumulative_gpa : computed.gpa;
+  const credits = (d.total_credits !== null && d.total_credits !== undefined) ? d.total_credits : computed.credits;
+  const gpaSource = (d.cumulative_gpa !== null && d.cumulative_gpa !== undefined)
+    ? 'cumulative GPA (from transcript)'
+    : `GPA (computed from ${computed.gradedCount} graded course${computed.gradedCount === 1 ? '' : 's'})`;
 
   const resultDiv = document.createElement('div');
 
@@ -565,12 +590,12 @@ function renderUploadResults(d) {
         </div>
         <div class="metrics">
           <div class="metric">
-            <div class="metric-label">cumulative GPA</div>
+            <div class="metric-label">${gpaSource}</div>
             <div class="metric-value ${color}">${gpa.toFixed(2)}</div>
           </div>
           <div class="metric">
-            <div class="metric-label">credits earned</div>
-            <div class="metric-value">${credits !== null ? credits : '--'}</div>
+            <div class="metric-label">credits</div>
+            <div class="metric-value">${credits !== null && credits !== undefined ? credits : '--'}</div>
           </div>
           <div class="metric">
             <div class="metric-label">GPA scale</div>
@@ -599,24 +624,45 @@ function renderUploadResults(d) {
           ${d.courses.map(c => `
             <div class="course-row" style="margin-bottom:6px;">
               <span style="font-size:13px;color:var(--text);">${c.name || 'Unnamed course'}</span>
-              <span style="font-size:13px;font-family:'DM Mono',monospace;">${c.grade}</span>
+              <span style="font-size:13px;font-family:'DM Mono',monospace;">${c.grade || '—'}</span>
               <span style="font-size:13px;color:var(--text2);">${c.credits} cr</span>
               <span></span>
             </div>
           `).join('')}
         </div>
         ` : ''}
+        <div style="margin-top:1rem;display:flex;gap:8px;flex-wrap:wrap;">
+          <button class="btn btn-primary" onclick="useExtractedInCalculator()">Plan next semester →</button>
+        </div>
       </div>
     `;
   } else {
     resultDiv.innerHTML += `
       <div class="card" style="margin-top:1rem;">
-        <p style="font-size:14px;color:var(--text2);">Couldn't extract a GPA from that image. Try the manual entry tab or upload a clearer screenshot.</p>
+        <p style="font-size:14px;color:var(--text2);">Couldn't extract a GPA — and no graded courses were found in the screenshot. Try a clearer image or use the manual entry tab.</p>
       </div>
     `;
   }
 
   el.appendChild(resultDiv);
+}
+
+function useExtractedInCalculator() {
+  if (!lastExtracted) { switchTab('manual'); return; }
+  const computed = gpaFromCourses(lastExtracted.courses);
+  const gpa = (lastExtracted.cumulative_gpa !== null && lastExtracted.cumulative_gpa !== undefined)
+    ? lastExtracted.cumulative_gpa : computed.gpa;
+  const credits = (lastExtracted.total_credits !== null && lastExtracted.total_credits !== undefined)
+    ? lastExtracted.total_credits : computed.credits;
+  if (gpa !== null && gpa !== undefined) {
+    document.getElementById('m-gpa').value = gpa.toFixed(2);
+  }
+  if (credits !== null && credits !== undefined && credits > 0) {
+    document.getElementById('m-credits').value = credits;
+  }
+  switchTab('manual');
+  calcManual();
+  document.getElementById('panel-manual').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 // ---------- MANUAL ----------
@@ -645,22 +691,30 @@ function addManualCourse() {
 }
 
 function calcManual() {
-  const currentGPA = parseFloat(document.getElementById('m-gpa').value) || null;
-  const creditsEarned = parseFloat(document.getElementById('m-credits').value) || null;
+  const gpaRaw = document.getElementById('m-gpa').value.trim();
+  const creditsRaw = document.getElementById('m-credits').value.trim();
   const oldGradeVal = document.getElementById('m-old-grade').value;
-  const oldCredits = parseFloat(document.getElementById('m-old-credits').value) || 3;
+  const oldCreditsRaw = document.getElementById('m-old-credits').value.trim();
 
-  if (currentGPA === null || creditsEarned === null) {
-    document.getElementById('manual-results').innerHTML = '';
-    return;
+  const hasCurrent = gpaRaw !== '' && creditsRaw !== '';
+  const currentGPA = hasCurrent ? parseFloat(gpaRaw) : 0;
+  const creditsEarned = hasCurrent ? parseFloat(creditsRaw) : 0;
+  const oldCredits = oldCreditsRaw === '' ? 3 : parseFloat(oldCreditsRaw);
+  const resultsEl = document.getElementById('manual-results');
+
+  if (hasCurrent) {
+    if (isNaN(currentGPA) || isNaN(creditsEarned) || currentGPA < 0 || currentGPA > 4 || creditsEarned < 0) {
+      resultsEl.innerHTML = '';
+      return;
+    }
   }
 
   let basePoints = currentGPA * creditsEarned;
   let baseCredits = creditsEarned;
 
-  if (oldGradeVal !== '') {
-    basePoints -= parseFloat(oldGradeVal) * oldCredits;
-    baseCredits -= oldCredits;
+  if (hasCurrent && oldGradeVal !== '' && !isNaN(oldCredits) && oldCredits > 0) {
+    basePoints = Math.max(0, basePoints - parseFloat(oldGradeVal) * oldCredits);
+    baseCredits = Math.max(0, baseCredits - oldCredits);
   }
 
   let semPoints = 0, semCredits = 0;
@@ -671,10 +725,14 @@ function calcManual() {
     }
   });
 
-  const projected = (basePoints + semPoints) / (baseCredits + semCredits);
-  const proj = isNaN(projected) ? null : Math.min(4.0, Math.max(0, projected));
+  const totalCredits = baseCredits + semCredits;
+  if (totalCredits <= 0) {
+    resultsEl.innerHTML = '';
+    return;
+  }
 
-  if (proj === null) return;
+  const projected = (basePoints + semPoints) / totalCredits;
+  const proj = Math.min(4.0, Math.max(0, projected));
 
   const color = proj >= 3.0 ? 'green' : proj >= 2.5 ? 'amber' : 'red';
   const pillClass = proj >= 3.0 ? 'green' : proj >= 2.5 ? 'amber' : 'red';
@@ -686,13 +744,7 @@ function calcManual() {
     ? 'Student teaching benchmark met.'
     : `${diff} GPA points below the 3.0 student teaching benchmark.`;
 
-  document.getElementById('manual-results').innerHTML = `
-    <div class="card results-section">
-      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
-        <div class="card-label" style="margin:0;">Projected results</div>
-        <span class="status-pill ${pillClass}">${pillText}</span>
-      </div>
-      <div class="metrics">
+  const metricsHtml = hasCurrent ? `
         <div class="metric">
           <div class="metric-label">current GPA</div>
           <div class="metric-value">${currentGPA.toFixed(2)}</div>
@@ -704,7 +756,28 @@ function calcManual() {
         <div class="metric">
           <div class="metric-label">change</div>
           <div class="metric-value ${proj >= currentGPA ? 'green' : 'red'}">${proj >= currentGPA ? '+' : ''}${(proj - currentGPA).toFixed(2)}</div>
+        </div>` : `
+        <div class="metric">
+          <div class="metric-label">semester GPA</div>
+          <div class="metric-value ${color}">${proj.toFixed(2)}</div>
         </div>
+        <div class="metric">
+          <div class="metric-label">credits</div>
+          <div class="metric-value">${semCredits}</div>
+        </div>
+        <div class="metric">
+          <div class="metric-label">GPA scale</div>
+          <div class="metric-value">${Math.round((proj/4.0)*100)}%</div>
+        </div>`;
+
+  resultsEl.innerHTML = `
+    <div class="card results-section">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px;">
+        <div class="card-label" style="margin:0;">${hasCurrent ? 'Projected results' : 'Semester GPA'}</div>
+        <span class="status-pill ${pillClass}">${pillText}</span>
+      </div>
+      <div class="metrics">
+        ${metricsHtml}
       </div>
       <div class="benchmark-bar-wrap">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:4px;">
