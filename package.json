@@ -1,0 +1,9 @@
+{
+  "name": "gpa-calculator",
+  "version": "1.0.0",
+  "private": true,
+  "description": "GPA calculator with transcript-screenshot vision analysis via Anthropic Claude.",
+  "engines": {
+    "node": ">=20"
+  }
+}
