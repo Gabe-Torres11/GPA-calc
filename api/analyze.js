@@ -56,7 +56,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
+        model: 'claude-sonnet-4-5',
         max_tokens: 1000,
         messages: [{
           role: 'user',
@@ -70,8 +70,9 @@ export default async function handler(req, res) {
 
     if (!anthropicRes.ok) {
       const text = await anthropicRes.text();
-      console.error('Anthropic error', anthropicRes.status, text);
-      return res.status(502).json({ error: 'Upstream model error.' });
+      console.error('Anthropic error status:', anthropicRes.status);
+      console.error('Anthropic error body:', text);
+      return res.status(502).json({ error: 'Upstream model error.', detail: text, status: anthropicRes.status });
     }
 
     const data = await anthropicRes.json();
