@@ -111,18 +111,17 @@
 
     if (weightedAvg(valid) >= neededGpa - 1e-9) return 0;
 
-    const work = valid.map(c => ({ ...c }));
+    const work = valid.map((c, i) => ({ ...c, _origIdx: i, _bumped: false }));
     work.sort((a, b) => GRADE_MAP[a.grade] - GRADE_MAP[b.grade]);
 
-    let bumps = 0;
     while (weightedAvg(work) < neededGpa - 1e-9) {
       const idx = work.findIndex(c => GRADE_ORDER.indexOf(c.grade) > 0);
       if (idx === -1) return null;
       work[idx].grade = bumpGradeOneLetter(work[idx].grade);
-      bumps++;
+      work[idx]._bumped = true;
       work.sort((a, b) => GRADE_MAP[a.grade] - GRADE_MAP[b.grade]);
     }
-    return bumps;
+    return work.filter(c => c._bumped).length;
   }
 
   function findSteadyUniformGrade(neededGpa) {
