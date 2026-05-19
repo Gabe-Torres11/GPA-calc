@@ -7,8 +7,20 @@
   };
   const GRADE_ORDER = ["A", "A-", "B+", "B", "B-", "C+", "C", "C-", "D+", "D", "F"];
 
+  function gradeAverageBucket(gpa) {
+    if (gpa >= 3.85) return "near-perfect — almost straight A's";
+    if (gpa >= 3.55) return "A- average";
+    if (gpa >= 3.15) return "B+ average";
+    if (gpa >= 2.85) return "B average";
+    if (gpa >= 2.55) return "B- average";
+    if (gpa >= 2.15) return "C+ average";
+    if (gpa >= 1.85) return "C average";
+    return "C- or lower";
+  }
+
   window.BenchmarkPath = {
     GRADE_MAP,
-    GRADE_ORDER
+    GRADE_ORDER,
+    gradeAverageBucket
   };
 })();

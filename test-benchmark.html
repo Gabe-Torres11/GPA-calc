@@ -57,7 +57,21 @@ window.addEventListener('load', () => {
 });
 
 function runTests() {
-  // tasks below will fill this in
+  group('gradeAverageBucket');
+  const b = window.BenchmarkPath.gradeAverageBucket;
+  assertEq(b(4.0),  "near-perfect — almost straight A's", "4.0");
+  assertEq(b(3.9),  "near-perfect — almost straight A's", "3.9 (upper edge)");
+  assertEq(b(3.85), "near-perfect — almost straight A's", "3.85 (boundary, inclusive)");
+  assertEq(b(3.84), "A- average", "3.84 (just below)");
+  assertEq(b(3.7),  "A- average", "3.7");
+  assertEq(b(3.55), "A- average", "3.55 boundary");
+  assertEq(b(3.3),  "B+ average", "3.3");
+  assertEq(b(3.0),  "B average", "3.0 exactly");
+  assertEq(b(2.7),  "B- average", "2.7");
+  assertEq(b(2.3),  "C+ average", "2.3");
+  assertEq(b(2.0),  "C average", "2.0");
+  assertEq(b(1.5),  "C- or lower", "1.5");
+  assertEq(b(0.0),  "C- or lower", "0.0");
 }
 </script>
 </body>
