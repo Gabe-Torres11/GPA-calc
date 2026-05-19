@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="UTF-8" />
+<title>Benchmark Path Tests</title>
+<style>
+  body { font-family: monospace; padding: 1rem; line-height: 1.5; }
+  .pass { color: green; }
+  .fail { color: red; font-weight: bold; }
+  .group { margin: 1rem 0; }
+  .group-title { font-weight: bold; margin-bottom: 0.25rem; }
+  pre { background: #f4f4f4; padding: 4px 8px; margin: 2px 0; font-size: 12px; white-space: pre-wrap; }
+</style>
+</head>
+<body>
+<h1>Benchmark Path tests</h1>
+<div id="results"></div>
+<script src="benchmark-path.js"></script>
+<script>
+const out = document.getElementById('results');
+let passed = 0, failed = 0;
+let currentGroup = null;
+
+function group(name) {
+  currentGroup = document.createElement('div');
+  currentGroup.className = 'group';
+  currentGroup.innerHTML = `<div class="group-title">${name}</div>`;
+  out.appendChild(currentGroup);
+}
+
+function approxEq(a, b, eps = 0.01) {
+  if (a === null && b === null) return true;
+  if (a === undefined && b === undefined) return true;
+  if (typeof a === 'number' && typeof b === 'number') return Math.abs(a - b) < eps;
+  return a === b;
+}
+
+function assertEq(actual, expected, label) {
+  const ok = approxEq(actual, expected);
+  const line = document.createElement('pre');
+  line.className = ok ? 'pass' : 'fail';
+  line.textContent = `${ok ? 'PASS' : 'FAIL'} — ${label} — actual: ${JSON.stringify(actual)} expected: ${JSON.stringify(expected)}`;
+  (currentGroup || out).appendChild(line);
+  ok ? passed++ : failed++;
+}
+
+function assertTrue(cond, label) {
+  assertEq(!!cond, true, label);
+}
+
+window.addEventListener('load', () => {
+  runTests();
+  const summary = document.createElement('h2');
+  summary.textContent = `${passed} passed, ${failed} failed`;
+  summary.className = failed === 0 ? 'pass' : 'fail';
+  out.prepend(summary);
+});
+
+function runTests() {
+  // tasks below will fill this in
+}
+</script>
+</body>
+</html>
