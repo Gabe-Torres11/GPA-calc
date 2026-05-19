@@ -13,12 +13,22 @@ const EXTRACTION_PROMPT = `You are analyzing a student's academic transcript or 
   "cumulative_gpa": <number or null>,
   "total_credits": <number or null>,
   "courses": [
-    { "name": "<course name>", "grade": "<letter grade>", "credits": <number>, "in_progress": <boolean> }
+    { "name": "<course name>", "grade": "<letter grade or null>", "credits": <number>, "in_progress": <boolean>, "term": "<term name or null>" }
+  ],
+  "terms": [
+    { "name": "<term name e.g. Fall 2024>", "gpa": <number or null>, "credits": <number or null>, "status": "completed" | "in_progress" }
   ],
   "summary": "<one sentence plain English summary of what you found>"
 }
-If you cannot find certain data, use null. For courses, only include courses visible in the transcript. Letter grades should be standard format: A, A-, B+, B, B-, C+, C, C-, D+, D, F.
-Set "in_progress": true for any course whose grade is tentative, in-progress, marked current-semester, midterm, projected, or otherwise still changeable. Set "in_progress": false for completed/final grades from past terms. If the entire screenshot shows only one current semester of grades (e.g., a grade-portal view rather than a multi-year transcript), mark every course in_progress: true.`;
+
+Rules:
+- If you cannot find certain data, use null.
+- "total_credits" must be the number of credits used as the DENOMINATOR of the cumulative GPA. On a transcript this is labeled "GPA Units" or "Cum GPA Units" or "credits earned with grades" — NOT "attempted credits" or "total points." If the transcript shows e.g. "78 attempted / 50 earned / 50 GPA Units / 128.30 points," return 50.
+- For each course: letter grades use standard format (A, A-, B+, B, B-, C+, C, C-, D+, D, F). If a course has no current letter grade (in-progress, blank, or showing 0.00 earned), return grade: null and in_progress: true.
+- Set "in_progress": true for any course whose grade is tentative, still changeable, blank, or marked current/future-semester. Set "in_progress": false for completed/final grades from past terms.
+- If a single screenshot shows only one current semester of grades (e.g., a grade-portal view), mark every course in_progress: true.
+- Always include "term" per course if the transcript groups by term (e.g., "Fall 2024", "Spring 2026").
+- "terms" array: include one entry per term shown on the transcript, in chronological order. Use the per-term GPA reported (often labeled "Term GPA"). status is "completed" if the term has final grades, "in_progress" if any course in that term lacks a final grade.`;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -58,7 +68,7 @@ export default async function handler(req, res) {
       },
       body: JSON.stringify({
         model: 'claude-sonnet-4-5',
-        max_tokens: 1000,
+        max_tokens: 4000,
         messages: [{
           role: 'user',
           content: [

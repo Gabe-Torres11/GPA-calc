@@ -344,6 +344,42 @@
 
   .results-section { margin-top: 1.5rem; }
 
+  .term-trend { margin-top: 1.25rem; padding-top: 1rem; border-top: 0.5px solid var(--border); }
+  .term-pills {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    align-items: stretch;
+  }
+  .term-pill {
+    display: inline-flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 10px;
+    border-radius: 8px;
+    background: var(--surface2);
+    border: 0.5px solid var(--border);
+    font-size: 11px;
+    color: var(--text2);
+    min-width: 56px;
+    line-height: 1.2;
+  }
+  .term-pill .term-gpa {
+    font-family: 'DM Mono', monospace;
+    font-size: 14px;
+    font-weight: 500;
+    margin-top: 2px;
+    color: var(--text);
+  }
+  .term-pill.green { background: var(--green-bg); border-color: #a8d5c5; }
+  .term-pill.green .term-gpa { color: var(--green); }
+  .term-pill.amber { background: var(--amber-bg); border-color: #ecd0a1; }
+  .term-pill.amber .term-gpa { color: var(--amber); }
+  .term-pill.red { background: var(--red-bg); border-color: #e9b5b5; }
+  .term-pill.red .term-gpa { color: var(--red); }
+  .term-pill.in-progress { background: var(--surface); border-style: dashed; }
+  .term-pill.in-progress .term-gpa { font-size: 11px; font-family: 'DM Sans', sans-serif; font-weight: 400; color: var(--text3); }
+
   .note { font-size: 12px; color: var(--text3); margin-top: 6px; }
 
   @media (max-width: 480px) {
@@ -582,6 +618,31 @@ function gpaFromCourses(courses) {
   return { gpa: points / credits, credits, gradedCount: count };
 }
 
+function shortTermName(name) {
+  if (!name) return '';
+  const m = /^(spring|summer|fall|winter)\s+(\d{4})$/i.exec(name.trim());
+  if (!m) return name;
+  const season = { spring: "Sp", summer: "Su", fall: "Fa", winter: "Wi" }[m[1].toLowerCase()];
+  return `${season} '${m[2].slice(2)}`;
+}
+
+function renderTermTrend(terms) {
+  if (!Array.isArray(terms) || terms.length === 0) return '';
+  const pills = terms.map(t => {
+    const short = shortTermName(t.name) || t.name || '?';
+    if (t.status === 'in_progress' || t.gpa === null || t.gpa === undefined) {
+      return `<span class="term-pill in-progress" title="${t.name || ''}">${short}<span class="term-gpa">in progress</span></span>`;
+    }
+    const cls = t.gpa >= 3.0 ? 'green' : t.gpa >= 2.5 ? 'amber' : 'red';
+    return `<span class="term-pill ${cls}" title="${t.name || ''}">${short}<span class="term-gpa">${(+t.gpa).toFixed(2)}</span></span>`;
+  }).join('');
+  return `
+    <div class="term-trend">
+      <div class="card-label" style="margin-bottom:8px;">Your term GPAs</div>
+      <div class="term-pills">${pills}</div>
+    </div>`;
+}
+
 function renderUploadResults(d) {
   lastExtracted = d;
   const el = document.getElementById('upload-result');
@@ -645,6 +706,7 @@ function renderUploadResults(d) {
             <span>4.0</span>
           </div>
         </div>
+        ${renderTermTrend(d.terms)}
         ${d.courses && d.courses.length > 0 ? `
         <div style="margin-top:1rem;">
           <div class="card-label">Courses found</div>
@@ -680,7 +742,6 @@ function renderUploadResults(d) {
 function useExtractedInCalculator() {
   if (!lastExtracted) { switchTab('manual'); return; }
   const allCourses = lastExtracted.courses || [];
-  const inProgress = allCourses.filter(c => c && c.in_progress === true);
   const completed = allCourses.filter(c => c && c.in_progress !== true);
 
   // Cumulative baseline = transcript value, or computed from completed-only courses
@@ -701,14 +762,24 @@ function useExtractedInCalculator() {
     document.getElementById('m-credits').value = credits;
   }
 
-  // Import in-progress courses into the manual semester planner so the student
-  // can iterate on the grades that are actually still changeable.
-  if (inProgress.length > 0) {
-    manualCourses = inProgress
-      .filter(c => GRADE_MAP[c.grade] !== undefined && +c.credits > 0)
+  // Pick the courses to import. If multiple in-progress terms exist (e.g., Spring + Fall),
+  // import only the earliest in-progress term — that's the student's current term.
+  // If no term tags are available, fall back to all in-progress courses.
+  const inProgressAll = allCourses.filter(c => c && c.in_progress === true);
+  let toImport = inProgressAll;
+  const inProgressTerms = (lastExtracted.terms || []).filter(t => t && t.status === 'in_progress');
+  if (inProgressTerms.length > 1) {
+    const firstTerm = inProgressTerms[0].name;
+    const filtered = inProgressAll.filter(c => c.term === firstTerm);
+    if (filtered.length > 0) toImport = filtered;
+  }
+
+  if (toImport.length > 0) {
+    manualCourses = toImport
+      .filter(c => +c.credits > 0)
       .map(c => ({
         name: c.name || '',
-        grade: c.grade,
+        grade: (c.grade && GRADE_MAP[c.grade] !== undefined) ? c.grade : 'B',
         credits: +c.credits
       }));
     if (manualCourses.length === 0) {
@@ -897,6 +968,47 @@ function updateCourseHints() {
   });
 }
 
+function completedTermGpas() {
+  if (!lastExtracted || !Array.isArray(lastExtracted.terms)) return [];
+  return lastExtracted.terms
+    .filter(t => t && t.status === 'completed' && typeof t.gpa === 'number')
+    .map(t => ({ name: t.name, gpa: +t.gpa }));
+}
+
+function realisticNoteForState(result, target) {
+  const terms = completedTermGpas();
+  if (terms.length === 0) return '';
+  const avg = terms.reduce((s, t) => s + t.gpa, 0) / terms.length;
+  const max = terms.reduce((m, t) => t.gpa > m ? t.gpa : m, -Infinity);
+  const termCount = terms.length;
+
+  if (result.state === 'B') {
+    const needed = result.neededGpa;
+    if (needed > max + 0.1) {
+      return `Reality check: your highest term GPA on record is ${max.toFixed(2)} — clearing ${target.toFixed(1)} this term would require beating your historical best.`;
+    }
+    const aboveCount = terms.filter(t => t.gpa >= needed).length;
+    if (aboveCount > 0) {
+      return `Reality check: you've hit a ${needed.toFixed(2)} or higher in ${aboveCount} of your ${termCount} prior term${termCount === 1 ? '' : 's'} (average: ${avg.toFixed(2)}).`;
+    }
+    const gap = needed - avg;
+    return `Reality check: your ${termCount}-term average has been ${avg.toFixed(2)} — that's ${gap.toFixed(2)} below the ${needed.toFixed(2)} you'd need this term.`;
+  }
+
+  if (result.state === 'C') {
+    if (max < 4.0 - 0.1) {
+      return `Reality check: your highest term GPA on record is ${max.toFixed(2)} — even a 4.0 this term wouldn't quite clear ${target.toFixed(1)}.`;
+    }
+    return `Reality check: your ${termCount}-term average has been ${avg.toFixed(2)}.`;
+  }
+
+  if (result.state === 'A') {
+    return `You're at the benchmark — your ${termCount}-term average has been ${avg.toFixed(2)}.`;
+  }
+
+  return '';
+}
+
 function renderBenchmarkPath(opts) {
   const target = opts.target || 3.0;
   const effectiveSemCredits = creditOverride !== null ? creditOverride : opts.semCredits;
@@ -919,6 +1031,9 @@ function renderBenchmarkPath(opts) {
     bumpAssignments
   };
 
+  const realistic = realisticNoteForState(result, target);
+  const realisticHtml = realistic ? `<p style="font-size:12px;color:var(--text3);margin-top:10px;font-style:italic;">${realistic}</p>` : '';
+
   let bodyHtml = '';
 
   if (result.state === 'A') {
@@ -930,6 +1045,7 @@ function renderBenchmarkPath(opts) {
         <span class="status-pill green">✓ at the benchmark</span>
       </div>
       <p style="font-size:14px;color:var(--text);">${floorTxt}</p>
+      ${realisticHtml}
     `;
   } else if (result.state === 'B') {
     const intro = result.isFirstSemester
@@ -1010,7 +1126,7 @@ function renderBenchmarkPath(opts) {
         </details>`;
     }
 
-    bodyHtml = `<p style="font-size:14px;color:var(--text);">${intro}</p>${recommendedHtml}${gapLine}${scenariosHtml}`;
+    bodyHtml = `<p style="font-size:14px;color:var(--text);">${intro}</p>${recommendedHtml}${gapLine}${realisticHtml}${scenariosHtml}`;
   } else {
     const fp = result.forwardPath;
     let forwardTxt;
@@ -1025,6 +1141,7 @@ function renderBenchmarkPath(opts) {
       </div>
       <p style="font-size:14px;color:var(--text);">${target.toFixed(1)} isn't reachable this semester. Even with straight A's (4.0 semester GPA), you'd finish at <strong style="font-family:'DM Mono',monospace;">${result.maxProjectedThisTerm.toFixed(2)}</strong>.</p>
       <p style="font-size:13px;color:var(--text2);margin-top:8px;">${forwardTxt}</p>
+      ${realisticHtml}
     `;
   }
 
