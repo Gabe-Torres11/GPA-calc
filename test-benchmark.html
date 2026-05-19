@@ -72,6 +72,34 @@ function runTests() {
   assertEq(b(2.0),  "C average", "2.0");
   assertEq(b(1.5),  "C- or lower", "1.5");
   assertEq(b(0.0),  "C- or lower", "0.0");
+
+  group('computeBenchmarkPath — State B (reachable)');
+  const cbp = window.BenchmarkPath.computeBenchmarkPath;
+  let r = cbp({ basePoints: 2.74 * 45, baseCredits: 45, semCredits: 15, target: 3.0 });
+  assertEq(r.state, 'B', 'state is B');
+  assertEq(r.neededGpa, 3.78, 'needed semester GPA');
+  assertEq(r.plainEnglish, "A- average", 'plain English');
+
+  group('computeBenchmarkPath — State A (already at/above)');
+  r = cbp({ basePoints: 3.5 * 60, baseCredits: 60, semCredits: 15, target: 3.0 });
+  assertEq(r.state, 'A', 'state is A (already above)');
+  assertEq(r.maxDropGpa, 1.0, 'floor allows dropping to 1.0');
+
+  r = cbp({ basePoints: 4.0 * 60, baseCredits: 60, semCredits: 15, target: 3.0 });
+  assertEq(r.state, 'A', 'state is A (way above)');
+  assertEq(r.maxDropGpa, 0, 'floor clamped at 0');
+
+  group('computeBenchmarkPath — State C (impossible)');
+  r = cbp({ basePoints: 2.0 * 90, baseCredits: 90, semCredits: 15, target: 3.0 });
+  assertEq(r.state, 'C', 'state is C');
+  assertTrue(r.neededGpa > 4.0, 'needed > 4.0');
+  assertEq(r.maxProjectedThisTerm, 2.286, 'max projected with 4.0 this term');
+
+  group('computeBenchmarkPath — first semester (no prior credits)');
+  r = cbp({ basePoints: 0, baseCredits: 0, semCredits: 15, target: 3.0 });
+  assertEq(r.state, 'B', 'first-semester state is B');
+  assertEq(r.neededGpa, 3.0, 'first-semester needs exactly 3.0');
+  assertTrue(r.isFirstSemester, 'first-semester flag set');
 }
 </script>
 </body>
