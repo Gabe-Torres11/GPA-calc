@@ -100,6 +100,16 @@ function runTests() {
   assertEq(r.state, 'B', 'first-semester state is B');
   assertEq(r.neededGpa, 3.0, 'first-semester needs exactly 3.0');
   assertTrue(r.isFirstSemester, 'first-semester flag set');
+
+  group('computeBenchmarkPath — State C forward path');
+  r = cbp({ basePoints: 2.0 * 90, baseCredits: 90, semCredits: 15, target: 3.0 });
+  assertEq(r.forwardPath.kind, 'multiple', 'big gap requires multiple semesters');
+
+  r = cbp({ basePoints: 2.4 * 30, baseCredits: 30, semCredits: 15, target: 3.0 });
+  assertEq(r.state, 'C', 'state C confirmed');
+  assertEq(r.forwardPath.kind, 'one-more-semester', 'one more semester suffices');
+  assertEq(r.forwardPath.followonGpa, 3.2, 'followon GPA');
+  assertEq(r.forwardPath.followonCredits, 15, 'default followon credit load');
 }
 </script>
 </body>

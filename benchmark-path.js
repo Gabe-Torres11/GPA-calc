@@ -30,12 +30,30 @@
     const neededGpaRaw = neededSemPoints / semCredits;
 
     if (neededGpaRaw > 4.0 + 1e-9) {
+      const FOLLOWON_CREDITS = 15;
+      const pointsAfterThisTerm = basePoints + 4.0 * semCredits;
+      const creditsAfterThisTerm = totalCredits;
+      const followonNeededPoints = target * (creditsAfterThisTerm + FOLLOWON_CREDITS) - pointsAfterThisTerm;
+      const followonGpa = followonNeededPoints / FOLLOWON_CREDITS;
+
+      let forwardPath;
+      if (followonGpa <= 4.0 + 1e-9) {
+        forwardPath = {
+          kind: 'one-more-semester',
+          followonGpa: round2(followonGpa),
+          followonCredits: FOLLOWON_CREDITS
+        };
+      } else {
+        forwardPath = { kind: 'multiple' };
+      }
+
       const maxProjectedThisTerm = round2((basePoints + 4.0 * semCredits) / totalCredits);
       return {
         state: 'C',
         neededGpa: round2(neededGpaRaw),
         plainEnglish: null,
         maxProjectedThisTerm,
+        forwardPath,
         isFirstSemester
       };
     }
