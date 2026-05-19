@@ -13,11 +13,12 @@ const EXTRACTION_PROMPT = `You are analyzing a student's academic transcript or 
   "cumulative_gpa": <number or null>,
   "total_credits": <number or null>,
   "courses": [
-    { "name": "<course name>", "grade": "<letter grade>", "credits": <number> }
+    { "name": "<course name>", "grade": "<letter grade>", "credits": <number>, "in_progress": <boolean> }
   ],
   "summary": "<one sentence plain English summary of what you found>"
 }
-If you cannot find certain data, use null. For courses, only include courses visible in the transcript. Letter grades should be standard format: A, A-, B+, B, B-, C+, C, C-, D+, D, F.`;
+If you cannot find certain data, use null. For courses, only include courses visible in the transcript. Letter grades should be standard format: A, A-, B+, B, B-, C+, C, C-, D+, D, F.
+Set "in_progress": true for any course whose grade is tentative, in-progress, marked current-semester, midterm, projected, or otherwise still changeable. Set "in_progress": false for completed/final grades from past terms. If the entire screenshot shows only one current semester of grades (e.g., a grade-portal view rather than a multi-year transcript), mark every course in_progress: true.`;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {

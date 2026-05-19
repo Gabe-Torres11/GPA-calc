@@ -133,9 +133,13 @@
   }
 
   function bumpScenario(courses, neededGpa) {
-    const work = courses.map(c => ({ ...c }));
+    // Preserve original order via _idx so the caller can map back to input positions.
+    const work = courses.map((c, i) => ({ ...c, _idx: i }));
     if (weightedAvg(work) >= neededGpa - 1e-9) {
-      return work.map(c => ({ name: c.name, grade: c.grade, credits: c.credits }));
+      return work
+        .slice()
+        .sort((a, b) => a._idx - b._idx)
+        .map(c => ({ name: c.name, grade: c.grade, credits: c.credits, originalGrade: courses[c._idx].grade }));
     }
     let safety = 200;
     while (weightedAvg(work) < neededGpa - 1e-9 && safety-- > 0) {
@@ -144,7 +148,10 @@
       if (idx === -1) return null;
       work[idx].grade = bumpGradeOneLetter(work[idx].grade);
     }
-    return work.map(c => ({ name: c.name, grade: c.grade, credits: c.credits }));
+    return work
+      .slice()
+      .sort((a, b) => a._idx - b._idx)
+      .map(c => ({ name: c.name, grade: c.grade, credits: c.credits, originalGrade: courses[c._idx].grade }));
   }
 
   function mixedScenario(courses, neededGpa) {
@@ -224,6 +231,7 @@
     gradeAverageBucket,
     computeBenchmarkPath,
     countGradesToBump,
-    generateScenarios
+    generateScenarios,
+    bumpScenario
   };
 })();

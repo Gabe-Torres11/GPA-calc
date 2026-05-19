@@ -246,6 +246,33 @@
     gap: 10px;
   }
 
+  .course-row-wrap { margin-bottom: 4px; }
+  .course-row-wrap .course-row { margin-bottom: 2px; }
+  .needed-hint {
+    display: grid;
+    grid-template-columns: 2fr 80px 80px 28px;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--text3);
+    min-height: 0;
+    margin-bottom: 6px;
+  }
+  .needed-hint .badge {
+    grid-column: 2 / span 2;
+    justify-self: start;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 1px 8px;
+    border-radius: 10px;
+    font-family: 'DM Mono', monospace;
+    font-weight: 500;
+    font-size: 11px;
+  }
+  .needed-hint.raise .badge { background: var(--amber-bg); color: var(--amber); }
+  .needed-hint.ok .badge { background: var(--green-bg); color: var(--green); }
+  .needed-hint.impossible .badge { background: var(--red-bg); color: var(--red); }
+
   .benchmark-bar-wrap { margin-top: 10px; }
   .benchmark-track {
     height: 6px;
@@ -427,6 +454,7 @@ let manualCourses = [
   {name:"", grade:"B+", credits:3}
 ];
 let creditOverride = null;
+let lastBumpPlan = null;
 
 function switchTab(t) {
   document.querySelectorAll('.tab').forEach((el,i) => el.classList.toggle('active', (i===0&&t==='upload')||(i===1&&t==='manual')));
@@ -651,19 +679,45 @@ function renderUploadResults(d) {
 
 function useExtractedInCalculator() {
   if (!lastExtracted) { switchTab('manual'); return; }
-  const computed = gpaFromCourses(lastExtracted.courses);
-  const gpa = (lastExtracted.cumulative_gpa !== null && lastExtracted.cumulative_gpa !== undefined)
-    ? lastExtracted.cumulative_gpa : computed.gpa;
-  const credits = (lastExtracted.total_credits !== null && lastExtracted.total_credits !== undefined)
-    ? lastExtracted.total_credits : computed.credits;
+  const allCourses = lastExtracted.courses || [];
+  const inProgress = allCourses.filter(c => c && c.in_progress === true);
+  const completed = allCourses.filter(c => c && c.in_progress !== true);
+
+  // Cumulative baseline = transcript value, or computed from completed-only courses
+  let gpa = (lastExtracted.cumulative_gpa !== null && lastExtracted.cumulative_gpa !== undefined)
+    ? lastExtracted.cumulative_gpa : null;
+  let credits = (lastExtracted.total_credits !== null && lastExtracted.total_credits !== undefined)
+    ? lastExtracted.total_credits : null;
+  if (gpa === null) {
+    const computed = gpaFromCourses(completed.length ? completed : allCourses);
+    gpa = computed.gpa;
+    if (credits === null && computed.credits > 0) credits = computed.credits;
+  }
+
   if (gpa !== null && gpa !== undefined) {
     document.getElementById('m-gpa').value = gpa.toFixed(2);
   }
   if (credits !== null && credits !== undefined && credits > 0) {
     document.getElementById('m-credits').value = credits;
   }
+
+  // Import in-progress courses into the manual semester planner so the student
+  // can iterate on the grades that are actually still changeable.
+  if (inProgress.length > 0) {
+    manualCourses = inProgress
+      .filter(c => GRADE_MAP[c.grade] !== undefined && +c.credits > 0)
+      .map(c => ({
+        name: c.name || '',
+        grade: c.grade,
+        credits: +c.credits
+      }));
+    if (manualCourses.length === 0) {
+      manualCourses = [{name:"", grade:"B", credits:3}];
+    }
+  }
+
   switchTab('manual');
-  calcManual();
+  renderManualCourses();
   document.getElementById('panel-manual').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -672,17 +726,20 @@ function renderManualCourses() {
   const el = document.getElementById('m-courses');
   el.innerHTML = '';
   manualCourses.forEach((c, i) => {
-    const row = document.createElement('div');
-    row.className = 'course-row';
-    row.innerHTML = `
-      <input type="text" placeholder="Course name (optional)" value="${c.name}" oninput="manualCourses[${i}].name=this.value" />
-      <select onchange="manualCourses[${i}].grade=this.value;calcManual()">
-        ${GRADE_OPTS.map(g => `<option value="${g}"${g===c.grade?' selected':''}>${g}</option>`).join('')}
-      </select>
-      <input type="number" min="1" max="6" value="${c.credits}" oninput="manualCourses[${i}].credits=+this.value;calcManual()" />
-      <button class="remove-btn" onclick="manualCourses.splice(${i},1);renderManualCourses();">&#x2715;</button>
+    const wrap = document.createElement('div');
+    wrap.className = 'course-row-wrap';
+    wrap.innerHTML = `
+      <div class="course-row">
+        <input type="text" placeholder="Course name (optional)" value="${c.name}" oninput="manualCourses[${i}].name=this.value" />
+        <select onchange="manualCourses[${i}].grade=this.value;calcManual()">
+          ${GRADE_OPTS.map(g => `<option value="${g}"${g===c.grade?' selected':''}>${g}</option>`).join('')}
+        </select>
+        <input type="number" min="1" max="6" value="${c.credits}" oninput="manualCourses[${i}].credits=+this.value;calcManual()" />
+        <button class="remove-btn" onclick="manualCourses.splice(${i},1);renderManualCourses();">&#x2715;</button>
+      </div>
+      <div class="needed-hint" id="needed-hint-${i}"></div>
     `;
-    el.appendChild(row);
+    el.appendChild(wrap);
   });
   calcManual();
 }
@@ -808,13 +865,42 @@ function calcManual() {
     if (cardHtml) {
       resultsEl.insertAdjacentHTML('beforeend', cardHtml);
     }
+  } else {
+    lastBumpPlan = null;
   }
+
+  updateCourseHints();
+}
+
+function updateCourseHints() {
+  manualCourses.forEach((_c, i) => {
+    const el = document.getElementById('needed-hint-' + i);
+    if (!el) return;
+    el.className = 'needed-hint';
+    el.innerHTML = '';
+    if (!lastBumpPlan) return;
+    if (lastBumpPlan.state === 'A') return;
+    if (lastBumpPlan.state === 'C') {
+      el.classList.add('impossible');
+      el.innerHTML = `<span class="badge">needs A (still won't clear)</span>`;
+      return;
+    }
+    const plan = lastBumpPlan.bumpAssignments && lastBumpPlan.bumpAssignments[i];
+    if (!plan) return;
+    if (plan.grade === plan.originalGrade) {
+      el.classList.add('ok');
+      el.innerHTML = `<span class="badge">on track at ${plan.grade}</span>`;
+    } else {
+      el.classList.add('raise');
+      el.innerHTML = `<span class="badge">raise to ${plan.grade}</span>`;
+    }
+  });
 }
 
 function renderBenchmarkPath(opts) {
   const target = opts.target || 3.0;
   const effectiveSemCredits = creditOverride !== null ? creditOverride : opts.semCredits;
-  if (!effectiveSemCredits || effectiveSemCredits <= 0) return '';
+  if (!effectiveSemCredits || effectiveSemCredits <= 0) { lastBumpPlan = null; return ''; }
 
   const result = BenchmarkPath.computeBenchmarkPath({
     basePoints: opts.basePoints,
@@ -824,6 +910,15 @@ function renderBenchmarkPath(opts) {
   });
 
   const courses = opts.courses || [];
+  let bumpAssignments = null;
+  if (result.state === 'B' && courses.length > 0) {
+    bumpAssignments = BenchmarkPath.bumpScenario(courses, result.neededGpa);
+  }
+  lastBumpPlan = {
+    state: result.state,
+    bumpAssignments
+  };
+
   let bodyHtml = '';
 
   if (result.state === 'A') {
@@ -840,6 +935,30 @@ function renderBenchmarkPath(opts) {
     const intro = result.isFirstSemester
       ? `Your first semester at <strong>${target.toFixed(1)}</strong> is the benchmark — you need exactly a <strong style="font-family:'DM Mono',monospace;color:var(--accent);">${result.neededGpa.toFixed(2)}</strong> semester GPA across your ${effectiveSemCredits} credits.`
       : `You need a <strong style="font-family:'DM Mono',monospace;color:var(--accent);">${result.neededGpa.toFixed(2)}</strong> semester GPA to reach ${target.toFixed(1)} — about a <strong>${result.plainEnglish}</strong> across your ${effectiveSemCredits} credits.`;
+
+    let recommendedHtml = '';
+    if (bumpAssignments) {
+      const raised = bumpAssignments.filter(b => b.grade !== b.originalGrade);
+      if (raised.length > 0) {
+        const parts = raised.map(b => {
+          const name = (b.name && b.name.trim()) ? b.name.trim() : 'Course';
+          return `<strong>${name}</strong> from ${b.originalGrade} to <strong style="font-family:'DM Mono',monospace;">${b.grade}</strong>`;
+        });
+        const joined = parts.length === 1 ? parts[0]
+          : parts.length === 2 ? parts.join(' and ')
+          : parts.slice(0, -1).join(', ') + ', and ' + parts[parts.length - 1];
+        recommendedHtml = `
+          <div style="margin-top:12px;padding:10px 12px;background:var(--green-bg);border-radius:var(--radius-sm);border:0.5px solid #a8d5c5;">
+            <div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;color:var(--green);margin-bottom:4px;">Recommended</div>
+            <p style="font-size:13px;color:var(--text);line-height:1.5;">Raise ${joined} to reach ${target.toFixed(1)}.</p>
+          </div>`;
+      } else if (courses.length > 0) {
+        recommendedHtml = `
+          <div style="margin-top:12px;padding:10px 12px;background:var(--green-bg);border-radius:var(--radius-sm);border:0.5px solid #a8d5c5;">
+            <p style="font-size:13px;color:var(--green);">Your current grades clear the benchmark.</p>
+          </div>`;
+      }
+    }
 
     let gapLine = '';
     if (!result.isFirstSemester && courses.length > 0) {
@@ -891,7 +1010,7 @@ function renderBenchmarkPath(opts) {
         </details>`;
     }
 
-    bodyHtml = `<p style="font-size:14px;color:var(--text);">${intro}</p>${gapLine}${scenariosHtml}`;
+    bodyHtml = `<p style="font-size:14px;color:var(--text);">${intro}</p>${recommendedHtml}${gapLine}${scenariosHtml}`;
   } else {
     const fp = result.forwardPath;
     let forwardTxt;
