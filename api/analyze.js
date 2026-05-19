@@ -8,27 +8,22 @@ const ALLOWED_MIME = new Set([
 
 const MAX_BASE64_BYTES = 10 * 1024 * 1024;
 
-const EXTRACTION_PROMPT = `You are analyzing a student's academic transcript or grade report. Extract the following and respond ONLY with valid JSON, no markdown, no explanation:
+const EXTRACTION_PROMPT = `Extract this academic transcript as JSON only (no markdown, no prose):
 {
-  "cumulative_gpa": <number or null>,
-  "total_credits": <number or null>,
-  "courses": [
-    { "name": "<course name>", "grade": "<letter grade or null>", "credits": <number>, "in_progress": <boolean>, "term": "<term name or null>" }
-  ],
-  "terms": [
-    { "name": "<term name e.g. Fall 2024>", "gpa": <number or null>, "credits": <number or null>, "status": "completed" | "in_progress" }
-  ],
-  "summary": "<one sentence plain English summary of what you found>"
+  "cumulative_gpa": number|null,
+  "total_credits": number|null,
+  "courses": [{"name": string, "grade": "A"|"A-"|"B+"|"B"|"B-"|"C+"|"C"|"C-"|"D+"|"D"|"F"|null, "credits": number, "in_progress": boolean, "term": string|null}],
+  "terms": [{"name": string, "gpa": number|null, "credits": number, "status": "completed"|"in_progress"}],
+  "summary": string
 }
 
 Rules:
-- If you cannot find certain data, use null.
-- "total_credits" must be the number of credits used as the DENOMINATOR of the cumulative GPA. On a transcript this is labeled "GPA Units" or "Cum GPA Units" or "credits earned with grades" — NOT "attempted credits" or "total points." If the transcript shows e.g. "78 attempted / 50 earned / 50 GPA Units / 128.30 points," return 50.
-- For each course: letter grades use standard format (A, A-, B+, B, B-, C+, C, C-, D+, D, F). If a course has no current letter grade (in-progress, blank, or showing 0.00 earned), return grade: null and in_progress: true.
-- Set "in_progress": true for any course whose grade is tentative, still changeable, blank, or marked current/future-semester. Set "in_progress": false for completed/final grades from past terms.
-- If a single screenshot shows only one current semester of grades (e.g., a grade-portal view), mark every course in_progress: true.
-- Always include "term" per course if the transcript groups by term (e.g., "Fall 2024", "Spring 2026").
-- "terms" array: include one entry per term shown on the transcript, in chronological order. Use the per-term GPA reported (often labeled "Term GPA"). status is "completed" if the term has final grades, "in_progress" if any course in that term lacks a final grade.`;
+- total_credits = the GPA denominator ("GPA Units" / "credits earned with grades"), NOT attempted credits or quality points.
+- Course name = the descriptive title (e.g. "College Algebra"), not just the code (e.g. "MATH 104"). Include code only if no title is shown.
+- grade = null and in_progress = true for blank/ungraded/0.00-earned courses; in_progress = false for final past grades.
+- If the screenshot shows only one current semester, mark every course in_progress.
+- terms: chronological, one entry per semester shown; gpa = the printed Term GPA; status = "in_progress" if any course in that term lacks a final grade.
+- summary: one sentence.`;
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
@@ -67,7 +62,7 @@ export default async function handler(req, res) {
         'anthropic-version': '2023-06-01'
       },
       body: JSON.stringify({
-        model: 'claude-haiku-4-5-20251001',
+        model: 'claude-sonnet-4-5',
         max_tokens: 4000,
         messages: [{
           role: 'user',
