@@ -246,6 +246,19 @@
     gap: 10px;
   }
 
+  .course-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+    padding-top: 10px;
+    border-top: 0.5px solid var(--border);
+  }
+  .course-actions .btn-primary { margin-left: auto; }
+  @media (max-width: 480px) {
+    .course-actions .btn-primary { margin-left: 0; flex: 1 0 100%; order: -1; }
+  }
+
   .course-row-wrap { margin-bottom: 4px; }
   .course-row-wrap .course-row { margin-bottom: 2px; }
   .needed-hint {
@@ -343,6 +356,13 @@
   .divider span { font-size: 12px; color: var(--text3); }
 
   .results-section { margin-top: 1.5rem; }
+
+  @keyframes refreshPulse {
+    0%   { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+    50%  { box-shadow: 0 0 0 4px rgba(26,122,94,0.35); }
+    100% { box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  }
+  .refresh-pulse { animation: refreshPulse 1.1s ease-in-out; }
 
   .term-trend { margin-top: 1.25rem; padding-top: 1rem; border-top: 0.5px solid var(--border); }
   .term-pills {
@@ -442,7 +462,11 @@
         <span></span>
       </div>
       <div id="m-courses"></div>
-      <button class="btn btn-sm" onclick="addManualCourse()" style="margin-top:4px;">+ add course</button>
+      <div class="course-actions">
+        <button class="btn btn-sm" onclick="addManualCourse()">+ add course</button>
+        <button class="btn btn-sm" onclick="resetGrades()" title="Restore the default two-course starter and clear any imported grades">⟲ reset grades</button>
+        <button class="btn btn-sm btn-primary" onclick="refreshProjection()" id="refresh-btn">↻ Show my projected GPA</button>
+      </div>
     </div>
 
     <div class="card">
@@ -478,6 +502,10 @@
 </div>
 
 <script src="benchmark-path.js"></script>
+<script type="module">
+  import { animate } from "https://cdn.jsdelivr.net/npm/motion@11.18.0/+esm";
+  window.motion = { animate };
+</script>
 <script>
 const GRADE_MAP = {
   "A":4.0,"A-":3.7,"B+":3.3,"B":3.0,"B-":2.7,
@@ -485,10 +513,11 @@ const GRADE_MAP = {
 };
 const GRADE_OPTS = Object.keys(GRADE_MAP);
 
-let manualCourses = [
+const DEFAULT_COURSES = [
   {name:"", grade:"B", credits:3},
   {name:"", grade:"B+", credits:3}
 ];
+let manualCourses = JSON.parse(JSON.stringify(DEFAULT_COURSES));
 let creditOverride = null;
 let lastBumpPlan = null;
 
@@ -645,6 +674,7 @@ function renderTermTrend(terms) {
 
 function renderUploadResults(d) {
   lastExtracted = d;
+  populateManualFromExtracted();
   const el = document.getElementById('upload-result');
 
   const computed = gpaFromCourses(d.courses);
@@ -724,7 +754,8 @@ function renderUploadResults(d) {
         </div>
         ` : ''}
         <div style="margin-top:1rem;display:flex;gap:8px;flex-wrap:wrap;">
-          <button class="btn btn-primary" onclick="useExtractedInCalculator()">Plan next semester →</button>
+          <button class="btn btn-primary" onclick="goToPlanning()">Plan the semester →</button>
+          <p class="note" style="margin-top:8px;">Your grades are already on the <em>Enter manually</em> tab — change them to see what you'd need to clear the benchmark.</p>
         </div>
       </div>
     `;
@@ -739,12 +770,11 @@ function renderUploadResults(d) {
   el.appendChild(resultDiv);
 }
 
-function useExtractedInCalculator() {
-  if (!lastExtracted) { switchTab('manual'); return; }
+function populateManualFromExtracted() {
+  if (!lastExtracted) return;
   const allCourses = lastExtracted.courses || [];
   const completed = allCourses.filter(c => c && c.in_progress !== true);
 
-  // Cumulative baseline = transcript value, or computed from completed-only courses
   let gpa = (lastExtracted.cumulative_gpa !== null && lastExtracted.cumulative_gpa !== undefined)
     ? lastExtracted.cumulative_gpa : null;
   let credits = (lastExtracted.total_credits !== null && lastExtracted.total_credits !== undefined)
@@ -764,7 +794,6 @@ function useExtractedInCalculator() {
 
   // Pick the courses to import. If multiple in-progress terms exist (e.g., Spring + Fall),
   // import only the earliest in-progress term — that's the student's current term.
-  // If no term tags are available, fall back to all in-progress courses.
   const inProgressAll = allCourses.filter(c => c && c.in_progress === true);
   let toImport = inProgressAll;
   const inProgressTerms = (lastExtracted.terms || []).filter(t => t && t.status === 'in_progress');
@@ -785,10 +814,12 @@ function useExtractedInCalculator() {
     if (manualCourses.length === 0) {
       manualCourses = [{name:"", grade:"B", credits:3}];
     }
+    renderManualCourses();
   }
+}
 
+function goToPlanning() {
   switchTab('manual');
-  renderManualCourses();
   document.getElementById('panel-manual').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
@@ -818,6 +849,51 @@ function renderManualCourses() {
 function addManualCourse() {
   manualCourses.push({name:"", grade:"B", credits:3});
   renderManualCourses();
+}
+
+function resetGrades() {
+  manualCourses = JSON.parse(JSON.stringify(DEFAULT_COURSES));
+  creditOverride = null;
+  renderManualCourses();
+  const card = document.querySelector('#panel-manual .card');
+  if (card && window.motion && window.motion.animate) {
+    window.motion.animate(card,
+      { opacity: [0.6, 1] },
+      { duration: 0.35, easing: 'ease-out' }
+    );
+  }
+}
+
+function refreshProjection() {
+  calcManual();
+  const resultsEl = document.getElementById('manual-results');
+  if (!resultsEl) return;
+  const firstCard = resultsEl.querySelector('.card');
+  if (!firstCard) return;
+  firstCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  const gpaValueEl = firstCard.querySelector('.metric-value');
+  if (window.motion && window.motion.animate) {
+    window.motion.animate(firstCard,
+      {
+        boxShadow: [
+          '0 1px 3px rgba(0,0,0,0.08)',
+          '0 0 0 4px rgba(26,122,94,0.35)',
+          '0 1px 3px rgba(0,0,0,0.08)'
+        ]
+      },
+      { duration: 1.1, easing: 'ease-in-out' }
+    );
+    if (gpaValueEl) {
+      window.motion.animate(gpaValueEl,
+        { scale: [1, 1.18, 1] },
+        { duration: 0.7, easing: 'ease-out' }
+      );
+    }
+  } else {
+    // Fallback: CSS class pulse
+    firstCard.classList.add('refresh-pulse');
+    setTimeout(() => firstCard.classList.remove('refresh-pulse'), 1100);
+  }
 }
 
 function calcManual() {
