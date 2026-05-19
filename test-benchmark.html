@@ -134,6 +134,42 @@ function runTests() {
     'all A and target unreachable → null'
   );
   assertEq(cgtb([], 3.0), 0, 'empty list → 0');
+
+  group('generateScenarios');
+  const gs = window.BenchmarkPath.generateScenarios;
+
+  // Simple case: 4 equal B's, target 3.25.
+  // All three scenario kinds collapse to "all B+" so dedupe keeps just one.
+  let scenarios = gs([
+    {name:'Math', grade:'B', credits:3},
+    {name:'English', grade:'B', credits:3},
+    {name:'Bio', grade:'B-', credits:3},
+    {name:'Hist', grade:'B', credits:3}
+  ], 3.25);
+  assertTrue(Array.isArray(scenarios), 'returns an array');
+  assertTrue(scenarios.length >= 1 && scenarios.length <= 3, '1-3 scenarios');
+  const steady = scenarios.find(s => s.kind === 'steady');
+  assertTrue(!!steady, 'has steady scenario');
+  assertEq(steady.uniformGrade, 'B+', 'steady uniform grade is B+');
+  assertTrue(steady.grades.every(g => g.grade === 'B+'), 'all grades are B+');
+  assertEq(steady.grades.length, 4, 'one grade per course');
+
+  // Distinct case: one weak course among A-'s, target 3.5 — should produce 3 distinct scenarios.
+  scenarios = gs([
+    {name:'Math', grade:'C', credits:3},
+    {name:'English', grade:'A-', credits:3},
+    {name:'Bio', grade:'A-', credits:3},
+    {name:'Hist', grade:'A-', credits:3}
+  ], 3.5);
+  assertEq(scenarios.length, 3, 'three distinct scenarios when grades differ');
+  assertTrue(!!scenarios.find(s => s.kind === 'bump-current'), 'bump-current present in distinct case');
+
+  assertEq(gs([{name:'Solo', grade:'B', credits:3}], 3.0).length, 0, '<2 courses → no scenarios');
+  assertEq(gs([], 3.0).length, 0, 'empty → no scenarios');
+  assertEq(gs([
+    {name:'X', grade:'B', credits:3},
+    {name:'Y', grade:'B', credits:3}
+  ], 4.5).length, 0, 'unreachable target → no scenarios');
 }
 </script>
 </body>

@@ -125,11 +125,106 @@
     return bumps;
   }
 
+  function findSteadyUniformGrade(neededGpa) {
+    for (let i = GRADE_ORDER.length - 1; i >= 0; i--) {
+      const g = GRADE_ORDER[i];
+      if (GRADE_MAP[g] >= neededGpa - 1e-9) return g;
+    }
+    return null;
+  }
+
+  function bumpScenario(courses, neededGpa) {
+    const work = courses.map(c => ({ ...c }));
+    if (weightedAvg(work) >= neededGpa - 1e-9) {
+      return work.map(c => ({ name: c.name, grade: c.grade, credits: c.credits }));
+    }
+    let safety = 200;
+    while (weightedAvg(work) < neededGpa - 1e-9 && safety-- > 0) {
+      work.sort((a, b) => GRADE_MAP[a.grade] - GRADE_MAP[b.grade]);
+      const idx = work.findIndex(c => GRADE_ORDER.indexOf(c.grade) > 0);
+      if (idx === -1) return null;
+      work[idx].grade = bumpGradeOneLetter(work[idx].grade);
+    }
+    return work.map(c => ({ name: c.name, grade: c.grade, credits: c.credits }));
+  }
+
+  function mixedScenario(courses, neededGpa) {
+    if (courses.length < 2) return null;
+    const upper = findSteadyUniformGrade(neededGpa);
+    if (!upper) return null;
+    const upperIdx = GRADE_ORDER.indexOf(upper);
+    const lower = upperIdx + 1 < GRADE_ORDER.length ? GRADE_ORDER[upperIdx + 1] : upper;
+
+    const sorted = [...courses].sort((a, b) => b.credits - a.credits);
+    const half = Math.ceil(sorted.length / 2);
+
+    const assignments = sorted.map((c, i) => ({
+      name: c.name,
+      credits: c.credits,
+      grade: i < half ? upper : lower
+    }));
+
+    if (weightedAvg(assignments) < neededGpa - 1e-9) {
+      return sorted.map(c => ({ name: c.name, grade: upper, credits: c.credits }));
+    }
+    return assignments;
+  }
+
+  function generateScenarios(courses, neededGpa) {
+    if (!courses || courses.length < 2) return [];
+    if (neededGpa > 4.0 + 1e-9) return [];
+    const valid = courses.filter(c => GRADE_MAP[c.grade] !== undefined && c.credits > 0);
+    if (valid.length < 2) return [];
+
+    const scenarios = [];
+
+    const uniform = findSteadyUniformGrade(neededGpa);
+    if (uniform) {
+      scenarios.push({
+        kind: 'steady',
+        label: `All ${uniform}'s`,
+        uniformGrade: uniform,
+        grades: valid.map(c => ({ name: c.name, grade: uniform, credits: c.credits }))
+      });
+    }
+
+    const mixed = mixedScenario(valid, neededGpa);
+    if (mixed) {
+      scenarios.push({
+        kind: 'mixed',
+        label: 'Strong/weak mix',
+        grades: mixed
+      });
+    }
+
+    const bump = bumpScenario(valid, neededGpa);
+    if (bump) {
+      scenarios.push({
+        kind: 'bump-current',
+        label: 'Smallest bump to your current plan',
+        grades: bump
+      });
+    }
+
+    const seen = new Set();
+    const unique = [];
+    scenarios.forEach(s => {
+      const key = s.grades.map(g => g.grade).join('|');
+      if (!seen.has(key)) {
+        seen.add(key);
+        unique.push(s);
+      }
+    });
+
+    return unique.slice(0, 3);
+  }
+
   window.BenchmarkPath = {
     GRADE_MAP,
     GRADE_ORDER,
     gradeAverageBucket,
     computeBenchmarkPath,
-    countGradesToBump
+    countGradesToBump,
+    generateScenarios
   };
 })();
