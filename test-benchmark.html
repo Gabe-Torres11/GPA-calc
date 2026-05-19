@@ -110,6 +110,30 @@ function runTests() {
   assertEq(r.forwardPath.kind, 'one-more-semester', 'one more semester suffices');
   assertEq(r.forwardPath.followonGpa, 3.2, 'followon GPA');
   assertEq(r.forwardPath.followonCredits, 15, 'default followon credit load');
+
+  group('countGradesToBump');
+  const cgtb = window.BenchmarkPath.countGradesToBump;
+  assertEq(
+    cgtb([{grade:'B', credits:3}, {grade:'B', credits:3}, {grade:'B', credits:3}, {grade:'B', credits:3}], 3.0),
+    0,
+    '4xB at target → 0 bumps'
+  );
+  assertEq(
+    cgtb([{grade:'B', credits:3}, {grade:'B', credits:3}, {grade:'B', credits:3}, {grade:'B', credits:3}], 3.25),
+    4,
+    '4xB needs 4 bumps to hit 3.25'
+  );
+  assertEq(
+    cgtb([{grade:'B', credits:3}, {grade:'B', credits:3}, {grade:'B', credits:3}, {grade:'B', credits:3}], 3.05),
+    1,
+    '4xB needs 1 bump for 3.05'
+  );
+  assertEq(
+    cgtb([{grade:'A', credits:3}, {grade:'A', credits:3}], 4.5),
+    null,
+    'all A and target unreachable → null'
+  );
+  assertEq(cgtb([], 3.0), 0, 'empty list → 0');
 }
 </script>
 </body>

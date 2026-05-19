@@ -87,10 +87,49 @@
     };
   }
 
+  function weightedAvg(courses) {
+    let pts = 0, cr = 0;
+    courses.forEach(c => {
+      const g = GRADE_MAP[c.grade];
+      if (g === undefined) return;
+      pts += g * c.credits;
+      cr += c.credits;
+    });
+    return cr > 0 ? pts / cr : 0;
+  }
+
+  function bumpGradeOneLetter(grade) {
+    const idx = GRADE_ORDER.indexOf(grade);
+    if (idx <= 0) return grade;
+    return GRADE_ORDER[idx - 1];
+  }
+
+  function countGradesToBump(courses, neededGpa) {
+    if (!courses || courses.length === 0) return 0;
+    const valid = courses.filter(c => GRADE_MAP[c.grade] !== undefined && c.credits > 0);
+    if (valid.length === 0) return 0;
+
+    if (weightedAvg(valid) >= neededGpa - 1e-9) return 0;
+
+    const work = valid.map(c => ({ ...c }));
+    work.sort((a, b) => GRADE_MAP[a.grade] - GRADE_MAP[b.grade]);
+
+    let bumps = 0;
+    while (weightedAvg(work) < neededGpa - 1e-9) {
+      const idx = work.findIndex(c => GRADE_ORDER.indexOf(c.grade) > 0);
+      if (idx === -1) return null;
+      work[idx].grade = bumpGradeOneLetter(work[idx].grade);
+      bumps++;
+      work.sort((a, b) => GRADE_MAP[a.grade] - GRADE_MAP[b.grade]);
+    }
+    return bumps;
+  }
+
   window.BenchmarkPath = {
     GRADE_MAP,
     GRADE_ORDER,
     gradeAverageBucket,
-    computeBenchmarkPath
+    computeBenchmarkPath,
+    countGradesToBump
   };
 })();
