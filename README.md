@@ -4,6 +4,8 @@ Single-page GPA calculator with two flows:
 1. **Upload transcript** — drop a screenshot or PDF, Claude reads the grades and returns the cumulative GPA, courses, and a summary.
 2. **Manual entry** — type in current GPA + this semester's courses, get a projected GPA against a 3.0 student-teaching benchmark.
 
+A "Path to the benchmark" card tells students what semester GPA they need to reach 3.0, in plain English, with grade-combination scenarios and an adjustable credit-load slider.
+
 ## Stack
 
 - Static `index.html` (no build step)
@@ -40,6 +42,8 @@ If the app gets shared widely, add per-IP rate limiting via Vercel KV or Upstash
 | File | Purpose |
 |------|---------|
 | `index.html` | Full UI + manual GPA math |
+| `benchmark-path.js` | Pure helpers for the "Path to the benchmark" card |
+| `test-benchmark.html` | Browser test runner for `benchmark-path.js` — open directly |
 | `api/analyze.js` | Serverless proxy → Anthropic |
 | `vercel.json` | Function timeout (30s for PDFs) |
 | `package.json` | Marks Node 20 runtime |
